@@ -14,6 +14,22 @@ from Optimization_files.opt_GraBoost import *
 from Optimization_files.opt_XGBoost import *
 from Optimization_files.opt_LightGBM import *
 
+from Optimization_files.opt_DT import *
+from Optimization_files.opt_lr import *
+from Optimization_files.opt_nb import *
+from Optimization_files.opt_knn import *
+from Optimization_files.opt_rf import *
+
+
+################# IMPORT ACCURACY MEASURES ##################
+accuracy_objects_dict = dict()
+accuracy_objects_dict["Accuracy"] = Acc()
+accuracy_objects_dict["Precision"] = Precision()
+accuracy_objects_dict["Recall"] = Recall()
+accuracy_objects_dict["F1_score"] = F1_score()
+models_object_dict = dict()
+
+
 
 DATA_PATH = r'./data/raw/'
 data_name = "ToN_IoT_train_test_network"
@@ -24,14 +40,109 @@ path.mkdir(parents=True, exist_ok=True)
 X, y = data_load(DATA_PATH, data_name)
 #X_train, X_test, y_train, y_test = split_data_train_test(X, y)
 
-INTIAL_POINTS = 5
-N_ITERATIONS = 30
+INTIAL_POINTS = 1
+N_ITERATIONS = 1
 cv_strategy = StratifiedKFold(n_splits=5)
 
 meta_df = pd.DataFrame()
-start = time.time()
-#######################        optimization for adaBoost
 
+
+############################# RF 
+start = time.time()
+opt_func = partial(optimize_lr, X = X, y = y, cv=cv_strategy)
+optimizer = BayesianOptimization(
+    f=opt_func,
+    pbounds=lrpbounds,
+    random_state=42,
+    verbose=2
+)
+
+optimizer.maximize(init_points= INTIAL_POINTS, n_iter=N_ITERATIONS)
+LR_optimal_hyperparameter_values = optimizer.max
+meta_df["LR_tuning_time"] = [time.time() - start]
+meta_df["LR_HP"] = [LR_optimal_hyperparameter_values]
+
+############################# LR 
+start = time.time()
+opt_func = partial(optimize_lr, X = X, y = y, cv=cv_strategy)
+optimizer = BayesianOptimization(
+    f=opt_func,
+    pbounds=lrpbounds,
+    random_state=42,
+    verbose=2
+)
+
+optimizer.maximize(init_points= INTIAL_POINTS, n_iter=N_ITERATIONS)
+LR_optimal_hyperparameter_values = optimizer.max
+meta_df["LR_tuning_time"] = [time.time() - start]
+meta_df["LR_HP"] = [LR_optimal_hyperparameter_values]
+
+############################# NB 
+start = time.time()
+opt_func = partial(optimize_nb, X = X, y = y, cv=cv_strategy)
+optimizer = BayesianOptimization(
+    f=opt_func,
+    pbounds=nb_pbounds,
+    random_state=42,
+    verbose=2
+)
+
+optimizer.maximize(init_points= INTIAL_POINTS, n_iter=N_ITERATIONS)
+nb_optimal_hyperparameter_values = optimizer.max
+meta_df["NB_tuning_time"] = [time.time() - start]
+meta_df["NB_HP"] = [nb_optimal_hyperparameter_values]
+
+
+############################# DT 
+start = time.time()
+opt_func = partial(optimize_dtree, X = X, y = y, cv=cv_strategy)
+optimizer = BayesianOptimization(
+    f=opt_func,
+    pbounds=dtbounds,
+    random_state=42,
+    verbose=2
+)
+
+optimizer.maximize(init_points= INTIAL_POINTS, n_iter=N_ITERATIONS)
+dt_optimal_hyperparameter_values = optimizer.max
+meta_df["DT_tuning_time"] = [time.time() - start]
+meta_df["DT_HP"] = [dt_optimal_hyperparameter_values]
+
+############################# KNN
+start = time.time()
+opt_func = partial(optimize_knn, X = X, y = y, cv=cv_strategy)
+optimizer = BayesianOptimization(
+    f=opt_func,
+    pbounds=knnpbounds ,
+    random_state=42,
+    verbose=2
+)
+
+optimizer.maximize(init_points= INTIAL_POINTS, n_iter=N_ITERATIONS)
+knn_optimal_hyperparameter_values = optimizer.max
+meta_df["KNN_tuning_time"] = [time.time() - start]
+meta_df["kNN_HP"] = [knn_optimal_hyperparameter_values]
+
+
+
+
+
+models_object_dict["LR"] = LR(solver = solver_map[round(LR_optimal_hyperparameter_values["params"]["solver"])], 
+                              penalty = penalty_map[round(LR_optimal_hyperparameter_values["params"]["penalty"])], 
+                              C = float(LR_optimal_hyperparameter_values["params"]["C"]))
+
+models_object_dict["NB"] = NB(var_smoothing = float(nb_optimal_hyperparameter_values["params"]["var_smoothing"]))
+
+models_object_dict["DTree"] = DTree(criterion = criterion_map[round(dt_optimal_hyperparameter_values["params"]["criterion"])],
+                                    splitter = splitter_map[round(dt_optimal_hyperparameter_values["params"]["splitter"])],
+                                    max_depth = round(dt_optimal_hyperparameter_values["params"]["max_depth"]))
+
+models_object_dict["KNN"] = kNN(n_neighbors = round(knn_optimal_hyperparameter_values["params"]["n_neighbors"]), 
+                                weights  = weights_map[round(knn_optimal_hyperparameter_values["params"]["weights"])])
+
+"""
+#######################        optimization for adaBoost
+start = time.time()
 opt_func = partial(optimize_adaboost, X = X, y = y, cv = cv_strategy)
 optimizer = BayesianOptimization(
     f=opt_func,
@@ -46,9 +157,8 @@ ada_optimal_hyperparameter_values = optimizer.max
 meta_df["adaboost_tuning_time"] = [time.time() - start]
 meta_df["adaboost_HP"] = [ada_optimal_hyperparameter_values]
 
-#################################################################################################
 #######################        optimization for CatB ########################################
-start = time.time()
+
 opt_func = partial(optimize_catb, X = X, y = y, cv=cv_strategy)
 optimizer = BayesianOptimization(
     f=opt_func,
@@ -112,11 +222,7 @@ meta_df["xgboost_HP"] = [xgb_optimal_hyperparameter_values]
 
 
 
-accuracy_objects_dict = dict()
-accuracy_objects_dict["Accuracy"] = Acc()
-accuracy_objects_dict["Precision"] = Precision()
-accuracy_objects_dict["Recall"] = Recall()
-accuracy_objects_dict["F1_score"] = F1_score()
+
 
 # import models --- > baselines
 
@@ -152,7 +258,7 @@ models_object_dict["GraBoost"] = GBC(n_estimators= int(gbc_optimal_hyperparamete
                                      max_depth = int(gbc_optimal_hyperparameter_values["params"]["max_depth"]), min_samples_leaf = int(gbc_optimal_hyperparameter_values["params"]["min_samples_leaf"]), subsample = float(gbc_optimal_hyperparameter_values["params"]["subsample"]))
 
 
-
+"""
 meta_features_X, meta_features_Y, original_features_k_fold, result_dataframe = k_fold_return_meta_features(X, y, 
                                                                                                            models_object_dict, accuracy_objects_dict)
 
